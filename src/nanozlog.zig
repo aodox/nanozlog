@@ -366,9 +366,15 @@ fn generateFormatTo(comptime Args: type, comptime format: []const u8) FormatToFn
                             const len = ptr.*;
                             idx += size;
 
-                            @field(args, field_name).len = len;
-                            @field(args, field_name).ptr = @constCast(data[idx..].ptr);
-                            idx += len;
+                            if (comptime p.sentinel() != null) {
+                                // Encoder wrote bytes + trailing NUL.
+                                @field(args, field_name) = data[idx..][0..len :0];
+                                idx += len + 1;
+                            } else {
+                                @field(args, field_name).len = len;
+                                @field(args, field_name).ptr = @constCast(data[idx..].ptr);
+                                idx += len;
+                            }
                         } else if (p.size == .one) {
                             const size = @sizeOf(T);
                             const ptr: *align(1) const T = @ptrCast(data[idx..].ptr);
@@ -416,7 +422,9 @@ fn getArgsSize(args: anytype) usize {
             .float, .int, .bool, .@"enum", .error_set => size += @sizeOf(T),
             .pointer => |p| {
                 if (p.size == .slice and p.child == u8) {
-                    size += @sizeOf(usize) + val.len;
+                    // [:0]const u8 needs a trailing NUL in the queue blob.
+                    const nul: usize = if (comptime p.sentinel() != null) 1 else 0;
+                    size += @sizeOf(usize) + val.len + nul;
                 } else if (p.size == .one) {
                     size += @sizeOf(T);
                 } else {
@@ -475,6 +483,10 @@ fn encodeArgs(out: []u8, args: anytype) void {
 
                     @memcpy(out[idx .. idx + val.len], val);
                     idx += val.len;
+                    if (comptime p.sentinel() != null) {
+                        out[idx] = 0;
+                        idx += 1;
+                    }
                 } else if (p.size == .one) {
                     const size = @sizeOf(T);
                     const ptr: *align(1) T = @ptrCast(out[idx..].ptr);
