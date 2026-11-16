@@ -1,0 +1,4 @@
+[submodule "vendor/zeit"]
+	path = vendor/zeit
+	url = https://github.com/aodox/zeit.git
+	branch = main

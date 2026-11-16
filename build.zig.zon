@@ -2,9 +2,10 @@
     .name = .nanozlog,
     .version = "0.1.0",
     .dependencies = .{
+        // Path-pinned under vendor/ (git submodule). Avoid zig fetch remote URLs
+        // so builds work without pulling GitHub tarballs (e.g. behind GFW).
         .zeit = .{
-            .url = "https://github.com/rockorager/zeit/archive/refs/tags/v0.10.0.tar.gz",
-            .hash = "zeit-0.10.0-5I6bkxS-AgAaI3lI3RsXsWnPw7sMCqJKoFnSB8_QRAoo",
+            .path = "vendor/zeit",
         },
     },
     .minimum_zig_version = "0.17.0",
@@ -12,6 +13,7 @@
         "build.zig",
         "build.zig.zon",
         "src",
+        "vendor",
         "LICENSE.txt",
         "README.md",
     },
