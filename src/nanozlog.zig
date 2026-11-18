@@ -48,7 +48,10 @@ _thread_buffers: std.ArrayList(*ThreadBuffer) = .empty,
 _bg_thread_buffers: std.ArrayList(HeapNode) = .empty,
 _buffer_mutex: std.Io.Mutex = .init,
 
-_polling_worker: ?std.Io.Future(void) = null,
+/// Own OS thread (not `Io.concurrent`). Zig 0.17 `Io.Threaded` worker
+/// `busy_count -= 1` can underflow when a concurrent poller is awaited in
+/// `deinit` (ReleaseSafe → `panic: integer overflow` + UAF in Future.destroy).
+_polling_thread: ?std.Thread = null,
 _is_polling: std.atomic.Value(bool) = .init(false),
 
 _tscns: TscNs,
@@ -152,8 +155,9 @@ pub fn deinit(self: *NanoZlog) void {
     deinitThreadBuffer();
 
     self._is_polling.store(false, .release);
-    if (self._polling_worker) |*worker| {
-        _ = worker.await(self._io);
+    if (self._polling_thread) |thread| {
+        thread.join();
+        self._polling_thread = null;
     }
     self._writer.flush() catch {};
 
@@ -188,7 +192,12 @@ pub fn deinitThreadBuffer() void {
 pub fn start(self: *NanoZlog) !void {
     try self.initDummyBgLogInfos();
     self._is_polling.store(true, .release);
-    self._polling_worker = try self._io.concurrent(NanoZlog.pollingWorker, .{self});
+    // `_io.sleep` uses nanosleep — safe from this thread (no Threaded run-queue).
+    self._polling_thread = try std.Thread.spawn(
+        .{ .stack_size = 256 * 1024 },
+        pollingWorker,
+        .{self},
+    );
 }
 
 pub fn rdtsc(self: NanoZlog) i64 {
